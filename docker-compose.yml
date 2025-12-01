@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:3001/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - dropship-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - N8N_WEBHOOK_BASE_URL=${N8N_WEBHOOK_BASE_URL:-http://192.168.0.111:5678/webhook}
+      - GOOGLE_SHEETS_ID=${GOOGLE_SHEETS_ID:-1X6Dxum7dBLMPSp_nWMS9--43PWIX5mWaGlq1a6VVSF0}
+      - WOO_URL=${WOO_URL}
+      - WOO_CONSUMER_KEY=${WOO_CONSUMER_KEY}
+      - WOO_CONSUMER_SECRET=${WOO_CONSUMER_SECRET}
+      - SCRAPER_API_URL=${SCRAPER_API_URL:-http://192.168.0.111:5050}
+    restart: unless-stopped
+    networks:
+      - dropship-network
+
+networks:
+  dropship-network:
+    driver: bridge

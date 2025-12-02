@@ -1,6 +1,8 @@
 # Backend Dockerfile
 FROM node:20-alpine
 
+RUN apk add --no-cache nano curl wget bash
+
 WORKDIR /app
 
 # Copy package files

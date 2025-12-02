@@ -53,23 +53,43 @@ const store = {
 let sheetsClient = null
 
 async function initGoogleSheets() {
-  if (!config.sheets.credentials) {
-    console.log('Google Sheets: No credentials provided, using mock data')
-    return null
-  }
-  
   try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: config.sheets.credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    })
+    let auth;
     
-    sheetsClient = google.sheets({ version: 'v4', auth })
-    console.log('Google Sheets: Connected successfully')
-    return sheetsClient
+    // Opción 1: Archivo de credenciales (GOOGLE_APPLICATION_CREDENTIALS)
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      auth = new google.auth.GoogleAuth({
+        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
+      console.log('Google Sheets: Using credentials file');
+    }
+    // Opción 2: JSON en variable de entorno
+    else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+      auth = new google.auth.GoogleAuth({
+        credentials: credentials,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
+      console.log('Google Sheets: Using credentials from env');
+    }
+    else {
+      console.log('Google Sheets: No credentials provided, using mock data');
+      return null;
+    }
+    
+    sheetsClient = google.sheets({ version: 'v4', auth });
+    
+    // Test connection
+    await sheetsClient.spreadsheets.get({
+      spreadsheetId: config.sheets.id
+    });
+    
+    console.log('Google Sheets: Connected successfully ✓');
+    return sheetsClient;
   } catch (error) {
-    console.error('Google Sheets: Connection failed', error.message)
-    return null
+    console.error('Google Sheets: Connection failed -', error.message);
+    return null;
   }
 }
 

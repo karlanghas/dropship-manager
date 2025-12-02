@@ -25,6 +25,7 @@ services:
       - NODE_ENV=production
       - PORT=3201
       - N8N_WEBHOOK_BASE_URL=${N8N_WEBHOOK_BASE_URL:-http://192.168.0.111:5678/webhook}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-credentials.json
       - GOOGLE_SHEETS_ID=${GOOGLE_SHEETS_ID:-1X6Dxum7dBLMPSp_nWMS9--43PWIX5mWaGlq1a6VVSF0}
       - WOO_URL=${WOO_URL}
       - WOO_CONSUMER_KEY=${WOO_CONSUMER_KEY}

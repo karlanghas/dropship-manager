@@ -252,25 +252,60 @@ app.get('/api/products', async (req, res) => {
 
 // Add new products
 app.post('/api/products/add', async (req, res) => {
+  console.log('=== ADD PRODUCT REQUEST ===')
+  console.log('Body received:', JSON.stringify(req.body, null, 2))
+  
   try {
     const { urls } = req.body
     
     if (!urls || !Array.isArray(urls)) {
+      console.log('ERROR: URLs array is missing or invalid')
       return res.status(400).json({ error: 'URLs array is required' })
     }
     
+    console.log('URLs to add:', urls)
+    console.log('Sheets client available:', !!sheetsClient)
+    
     // Add to sheet
     const rows = urls.map(url => [
-      url,          // URL
-      '',           // titulo_resenas
-      '',           // calificacion
-      new Date().toISOString(), // fecha
-      '',           // texto_resenas
-      '',           // ARCHIVOJSON
-      'pending'     // estado
+      url,                              // URL
+      '',                               // titulo_resenas
+      '',                               // calificacion
+      new Date().toISOString(),         // fecha
+      '',                               // texto_resenas
+      '',                               // ARCHIVOJSON
+      'pending'                         // estado
     ])
     
-    const success = await appendToSheet('Raw_Resenas', rows)
+    console.log('Rows to append:', JSON.stringify(rows, null, 2))
+    
+    let sheetSuccess = false
+    
+    if (sheetsClient) {
+      try {
+        console.log('Attempting to append to sheet...')
+        console.log('Sheet ID:', config.sheets.id)
+        console.log('Sheet name: Raw_Resenas')
+        
+        const response = await sheetsClient.spreadsheets.values.append({
+          spreadsheetId: config.sheets.id,
+          range: 'Raw_Resenas!A:G',
+          valueInputOption: 'USER_ENTERED',
+          insertDataOption: 'INSERT_ROWS',
+          requestBody: { 
+            values: rows 
+          }
+        })
+        
+        console.log('Sheet append SUCCESS:', response.data.updates)
+        sheetSuccess = true
+      } catch (sheetError) {
+        console.error('Sheet append ERROR:', sheetError.message)
+        console.error('Full error:', JSON.stringify(sheetError.response?.data || sheetError, null, 2))
+      }
+    } else {
+      console.log('No sheetsClient available, skipping sheet update')
+    }
     
     // Also add to local store
     urls.forEach((url, i) => {
@@ -285,17 +320,19 @@ app.post('/api/products/add', async (req, res) => {
     // Try to notify n8n (optional)
     try {
       await callN8nWebhook(config.n8n.webhooks.addProduct, { urls })
+      console.log('n8n webhook called successfully')
     } catch (e) {
-      console.log('n8n notification skipped')
+      console.log('n8n notification skipped:', e.message)
     }
     
     res.json({ 
       success: true, 
+      sheetUpdated: sheetSuccess,
       message: `${urls.length} producto(s) agregado(s)`,
       products: store.products
     })
   } catch (error) {
-    console.error('Error adding products:', error)
+    console.error('FATAL ERROR in /api/products/add:', error)
     res.status(500).json({ error: error.message })
   }
 })

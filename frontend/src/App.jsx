@@ -33,7 +33,7 @@ import {
 } from 'lucide-react'
 
 // API Configuration
-const API_URL = import.meta.env.VITE_API_URL || 'http://192.168.0.111:3201/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://backend:3201/api'
 
 // ============================================
 // AUTH CONTEXT

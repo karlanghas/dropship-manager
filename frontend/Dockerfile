@@ -9,7 +9,6 @@ RUN apk add --no-cache nano curl wget bash
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
 
 RUN npm install
 

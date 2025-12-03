@@ -3,11 +3,25 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import fetch from 'node-fetch'
 import { google } from 'googleapis'
+import {
+  initAuth,
+  login,
+  logout,
+  validateToken,
+  authMiddleware,
+  adminMiddleware,
+  createUser,
+  updatePassword,
+  deleteUser,
+  listUsers,
+  unlockUser,
+  validatePasswordComplexity
+} from './auth.js'
 
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 3201
 
 // Middleware
 app.use(cors())
@@ -25,10 +39,7 @@ const config = {
     }
   },
   sheets: {
-    id: process.env.GOOGLE_SHEETS_ID || '1X6Dxum7dBLMPSp_nWMS9--43PWIX5mWaGlq1a6VVSF0',
-    credentials: process.env.GOOGLE_SERVICE_ACCOUNT_KEY 
-      ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
-      : null
+    id: process.env.GOOGLE_SHEETS_ID || '1X6Dxum7dBLMPSp_nWMS9--43PWIX5mWaGlq1a6VVSF0'
   },
   scraper: {
     url: process.env.SCRAPER_API_URL || 'http://192.168.0.111:5050'
@@ -52,104 +63,114 @@ const store = {
 // ============================================
 let sheetsClient = null
 
+// Construir credenciales desde variables de entorno individuales
+function buildCredentialsFromEnv() {
+  const requiredVars = [
+    'GOOGLE_TYPE',
+    'GOOGLE_PROJECT_ID',
+    'GOOGLE_PRIVATE_KEY_ID',
+    'GOOGLE_PRIVATE_KEY',
+    'GOOGLE_CLIENT_EMAIL',
+    'GOOGLE_CLIENT_ID'
+  ]
+  
+  // Verificar que al menos las variables requeridas estén presentes
+  const hasRequiredVars = requiredVars.every(varName => process.env[varName])
+  
+  if (!hasRequiredVars) {
+    return null
+  }
+  
+  // La private_key viene con \n escapados, hay que convertirlos a saltos de línea reales
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY
+  if (privateKey) {
+    // Reemplazar \n literales por saltos de línea reales
+    privateKey = privateKey.replace(/\\n/g, '\n')
+  }
+  
+  return {
+    type: process.env.GOOGLE_TYPE || 'service_account',
+    project_id: process.env.GOOGLE_PROJECT_ID,
+    private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
+    private_key: privateKey,
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    auth_uri: process.env.GOOGLE_AUTH_URI || 'https://accounts.google.com/o/oauth2/auth',
+    token_uri: process.env.GOOGLE_TOKEN_URI || 'https://oauth2.googleapis.com/token',
+    auth_provider_x509_cert_url: process.env.GOOGLE_AUTH_PROVIDER_CERT_URL || 'https://www.googleapis.com/oauth2/v1/certs',
+    client_x509_cert_url: process.env.GOOGLE_CLIENT_CERT_URL,
+    universe_domain: process.env.GOOGLE_UNIVERSE_DOMAIN || 'googleapis.com'
+  }
+}
+
 async function initGoogleSheets() {
   try {
     let auth;
+    let credentials = null;
     
-    // Opción 1: Archivo de credenciales (GOOGLE_APPLICATION_CREDENTIALS)
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      auth = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets']
-      });
-      console.log('Google Sheets: Using credentials file');
-    }
-    // Opción 2: JSON en variable de entorno
-    else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+    // Opción 1: Variables de entorno individuales (RECOMENDADO para repos públicos)
+    credentials = buildCredentialsFromEnv()
+    if (credentials) {
+      console.log('Google Sheets: Using credentials from individual ENV variables')
+      console.log('  Project ID:', credentials.project_id)
+      console.log('  Client Email:', credentials.client_email)
+      
       auth = new google.auth.GoogleAuth({
         credentials: credentials,
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
-      });
-      console.log('Google Sheets: Using credentials from env');
+      })
+    }
+    // Opción 2: Archivo de credenciales (GOOGLE_APPLICATION_CREDENTIALS)
+    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log('Google Sheets: Using credentials file:', process.env.GOOGLE_APPLICATION_CREDENTIALS)
+      auth = new google.auth.GoogleAuth({
+        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      })
+    }
+    // Opción 3: JSON completo en variable de entorno (GOOGLE_SERVICE_ACCOUNT_KEY)
+    else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      console.log('Google Sheets: Using credentials from GOOGLE_SERVICE_ACCOUNT_KEY env var')
+      
+      try {
+        // Intentar parsear directamente
+        credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY)
+      } catch (parseError) {
+        // Si falla, intentar decodificar de base64
+        try {
+          const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_KEY, 'base64').toString('utf8')
+          credentials = JSON.parse(decoded)
+          console.log('Google Sheets: Credentials decoded from base64')
+        } catch (base64Error) {
+          throw new Error('Could not parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON or base64')
+        }
+      }
+      
+      auth = new google.auth.GoogleAuth({
+        credentials: credentials,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      })
     }
     else {
-      console.log('Google Sheets: No credentials provided, using mock data');
-      return null;
+      console.log('Google Sheets: No credentials provided, using mock data')
+      console.log('  Option 1: Set individual GOOGLE_* env variables (recommended)')
+      console.log('  Option 2: Set GOOGLE_APPLICATION_CREDENTIALS file path')
+      console.log('  Option 3: Set GOOGLE_SERVICE_ACCOUNT_KEY as JSON/base64')
+      return null
     }
     
-    sheetsClient = google.sheets({ version: 'v4', auth });
+    sheetsClient = google.sheets({ version: 'v4', auth })
     
     // Test connection
     await sheetsClient.spreadsheets.get({
       spreadsheetId: config.sheets.id
-    });
-    
-    console.log('Google Sheets: Connected successfully ✓');
-    return sheetsClient;
-  } catch (error) {
-    console.error('Google Sheets: Connection failed -', error.message);
-    return null;
-  }
-}
-
-async function getSheetData(sheetName, range = 'A:Z') {
-  if (!sheetsClient) return []
-  
-  try {
-    const response = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: config.sheets.id,
-      range: `${sheetName}!${range}`
     })
     
-    const rows = response.data.values || []
-    if (rows.length < 2) return []
-    
-    const headers = rows[0]
-    return rows.slice(1).map((row, index) => {
-      const obj = { id: index }
-      headers.forEach((header, i) => {
-        obj[header] = row[i] || ''
-      })
-      return obj
-    })
+    console.log('Google Sheets: Connected successfully ✓')
+    return sheetsClient
   } catch (error) {
-    console.error('Error reading sheet:', error.message)
-    return []
-  }
-}
-
-async function appendToSheet(sheetName, values) {
-  if (!sheetsClient) return false
-  
-  try {
-    await sheetsClient.spreadsheets.values.append({
-      spreadsheetId: config.sheets.id,
-      range: `${sheetName}!A:Z`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values }
-    })
-    return true
-  } catch (error) {
-    console.error('Error appending to sheet:', error.message)
-    return false
-  }
-}
-
-async function updateSheetCell(sheetName, row, column, value) {
-  if (!sheetsClient) return false
-  
-  try {
-    await sheetsClient.spreadsheets.values.update({
-      spreadsheetId: config.sheets.id,
-      range: `${sheetName}!${column}${row + 2}`, // +2 because row 1 is header, and we use 0-indexed
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[value]] }
-    })
-    return true
-  } catch (error) {
-    console.error('Error updating sheet:', error.message)
-    return false
+    console.error('Google Sheets: Connection failed -', error.message)
+    return null
   }
 }
 
@@ -224,10 +245,22 @@ async function createWooProduct(productData) {
 }
 
 // ============================================
-// API ROUTES
+// HELPER FUNCTIONS
+// ============================================
+function detectMarketplace(url) {
+  if (!url) return 'Desconocido'
+  if (url.includes('mercadolibre')) return 'MercadoLibre'
+  if (url.includes('amazon')) return 'Amazon'
+  if (url.includes('aliexpress')) return 'AliExpress'
+  if (url.includes('ebay')) return 'eBay'
+  return 'Otro'
+}
+
+// ============================================
+// API ROUTES - PUBLIC
 // ============================================
 
-// Health check
+// Health check (público)
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -241,10 +274,145 @@ app.get('/api/health', (req, res) => {
 })
 
 // ============================================
+// AUTH ROUTES
+// ============================================
+
+// Login (público)
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username y password son requeridos' })
+  }
+  
+  const result = login(username, password)
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(401).json(result)
+  }
+})
+
+// Logout (requiere auth)
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+  const token = req.headers.authorization?.substring(7)
+  const result = logout(token)
+  res.json(result)
+})
+
+// Verificar sesión actual (requiere auth)
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user })
+})
+
+// Cambiar contraseña propia (requiere auth)
+app.post('/api/auth/change-password', authMiddleware, (req, res) => {
+  const { currentPassword, newPassword } = req.body
+  const username = req.user.username
+  
+  // Verificar contraseña actual
+  const loginResult = login(username, currentPassword)
+  if (!loginResult.success) {
+    return res.status(401).json({ error: 'Contraseña actual incorrecta' })
+  }
+  
+  const result = updatePassword(username, newPassword)
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(400).json(result)
+  }
+})
+
+// Validar complejidad de contraseña (público - para UI)
+app.post('/api/auth/validate-password', (req, res) => {
+  const { password } = req.body
+  const result = validatePasswordComplexity(password || '')
+  res.json(result)
+})
+
+// ============================================
+// USER MANAGEMENT ROUTES (Admin only)
+// ============================================
+
+// Listar usuarios
+app.get('/api/users', authMiddleware, adminMiddleware, (req, res) => {
+  res.json({ users: listUsers() })
+})
+
+// Crear usuario
+app.post('/api/users', authMiddleware, adminMiddleware, (req, res) => {
+  const { username, password, role } = req.body
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username y password son requeridos' })
+  }
+  
+  const result = createUser(username, password, role || 'user')
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(400).json(result)
+  }
+})
+
+// Eliminar usuario
+app.delete('/api/users/:username', authMiddleware, adminMiddleware, (req, res) => {
+  const { username } = req.params
+  const result = deleteUser(username)
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(400).json(result)
+  }
+})
+
+// Desbloquear usuario
+app.post('/api/users/:username/unlock', authMiddleware, adminMiddleware, (req, res) => {
+  const { username } = req.params
+  const result = unlockUser(username)
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(400).json(result)
+  }
+})
+
+// Resetear contraseña de usuario
+app.post('/api/users/:username/reset-password', authMiddleware, adminMiddleware, (req, res) => {
+  const { username } = req.params
+  const { newPassword } = req.body
+  
+  if (!newPassword) {
+    return res.status(400).json({ error: 'Nueva contraseña es requerida' })
+  }
+  
+  const result = updatePassword(username, newPassword)
+  
+  if (result.success) {
+    res.json(result)
+  } else {
+    res.status(400).json(result)
+  }
+})
+
+// ============================================
+// Aplicar middleware de autenticación a rutas protegidas
+// ============================================
+app.use('/api/products', authMiddleware)
+app.use('/api/scraping', authMiddleware)
+app.use('/api/marketing', authMiddleware)
+
+// ============================================
 // PRODUCTS ROUTES
 // ============================================
 
-// Get all products (from Raw_Resenas sheet)
+// Get all products
 app.get('/api/products', async (req, res) => {
   console.log('=== GET PRODUCTS REQUEST ===')
   
@@ -273,14 +441,12 @@ app.get('/api/products', async (req, res) => {
           status: row[6] || 'pending',
           marketplace: detectMarketplace(row[0] || '')
         }))
-        // Filtrar los eliminados
         .filter(p => p.status !== 'deleted' && p.url)
       
       console.log('Products after filter:', products.length)
       return res.json({ products })
     }
     
-    // Fallback to local store
     res.json({ products: store.products })
   } catch (error) {
     console.error('Error getting products:', error)
@@ -292,6 +458,7 @@ app.get('/api/products', async (req, res) => {
 app.post('/api/products/add', async (req, res) => {
   console.log('=== ADD PRODUCT REQUEST ===')
   console.log('Body received:', JSON.stringify(req.body, null, 2))
+  console.log('User:', req.user?.username)
   
   try {
     const { urls } = req.body
@@ -304,15 +471,14 @@ app.post('/api/products/add', async (req, res) => {
     console.log('URLs to add:', urls)
     console.log('Sheets client available:', !!sheetsClient)
     
-    // Add to sheet
     const rows = urls.map(url => [
-      url,                              // URL
-      '',                               // titulo_resenas
-      '',                               // calificacion
-      new Date().toISOString(),         // fecha
-      '',                               // texto_resenas
-      '',                               // ARCHIVOJSON
-      'pending'                         // estado
+      url,
+      '',
+      '',
+      new Date().toISOString(),
+      '',
+      '',
+      'pending'
     ])
     
     console.log('Rows to append:', JSON.stringify(rows, null, 2))
@@ -323,16 +489,13 @@ app.post('/api/products/add', async (req, res) => {
       try {
         console.log('Attempting to append to sheet...')
         console.log('Sheet ID:', config.sheets.id)
-        console.log('Sheet name: Raw_Resenas')
         
         const response = await sheetsClient.spreadsheets.values.append({
           spreadsheetId: config.sheets.id,
           range: 'Raw_Resenas!A:G',
           valueInputOption: 'USER_ENTERED',
           insertDataOption: 'INSERT_ROWS',
-          requestBody: { 
-            values: rows 
-          }
+          requestBody: { values: rows }
         })
         
         console.log('Sheet append SUCCESS:', response.data.updates)
@@ -341,11 +504,8 @@ app.post('/api/products/add', async (req, res) => {
         console.error('Sheet append ERROR:', sheetError.message)
         console.error('Full error:', JSON.stringify(sheetError.response?.data || sheetError, null, 2))
       }
-    } else {
-      console.log('No sheetsClient available, skipping sheet update')
     }
     
-    // Also add to local store
     urls.forEach((url, i) => {
       store.products.push({
         id: Date.now() + i,
@@ -355,7 +515,6 @@ app.post('/api/products/add', async (req, res) => {
       })
     })
     
-    // Try to notify n8n (optional)
     try {
       await callN8nWebhook(config.n8n.webhooks.addProduct, { urls })
       console.log('n8n webhook called successfully')
@@ -382,7 +541,6 @@ app.delete('/api/products/:id', async (req, res) => {
   console.log('Product ID to delete:', id)
   
   try {
-    // Remove from local store
     const indexToRemove = parseInt(id)
     
     if (store.products.length > indexToRemove) {
@@ -390,25 +548,15 @@ app.delete('/api/products/:id', async (req, res) => {
       console.log('Removed from local store:', removed)
     }
     
-    // Note: Para eliminar de Google Sheets necesitaríamos:
-    // 1. Leer todas las filas
-    // 2. Identificar la fila a eliminar
-    // 3. Usar batchUpdate para eliminar la fila
-    // Por ahora solo marcamos como eliminado o lo manejamos en memoria
-    
-    // Opción: Marcar como "deleted" en la hoja en lugar de eliminar
     if (sheetsClient) {
       try {
-        // Actualizar el estado a "deleted" en la columna G (estado)
-        const rowNumber = indexToRemove + 2 // +1 por header, +1 porque sheets es 1-indexed
+        const rowNumber = indexToRemove + 2
         
         await sheetsClient.spreadsheets.values.update({
           spreadsheetId: config.sheets.id,
           range: `Raw_Resenas!G${rowNumber}`,
           valueInputOption: 'USER_ENTERED',
-          requestBody: {
-            values: [['deleted']]
-          }
+          requestBody: { values: [['deleted']] }
         })
         console.log('Marked as deleted in sheet, row:', rowNumber)
       } catch (sheetError) {
@@ -422,16 +570,42 @@ app.delete('/api/products/:id', async (req, res) => {
     res.status(500).json({ error: error.message })
   }
 })
+
+// Publish product to WooCommerce
+app.post('/api/products/:id/publish', async (req, res) => {
+  try {
+    const { id } = req.params
+    console.log('Publishing product:', id)
+    
+    const wooProduct = await createWooProduct({
+      name: `Producto ${id}`,
+      type: 'simple',
+      status: 'draft'
+    })
+    
+    res.json({ 
+      success: true, 
+      wooProductId: wooProduct.id,
+      message: 'Producto publicado en WooCommerce'
+    })
+  } catch (error) {
+    console.error('Error publishing product:', error)
+    res.json({ 
+      success: true, 
+      wooProductId: 'demo-' + Date.now(),
+      message: 'Producto publicado (demo)'
+    })
+  }
+})
+
 // ============================================
 // SCRAPING ROUTES
 // ============================================
 
-// Start scraping
 app.post('/api/scraping/start', async (req, res) => {
   try {
     store.scrapingStatus = 'processing'
     
-    // Call n8n webhook to start scraping workflow
     const result = await callN8nWebhook(config.n8n.webhooks.scraping, {
       spreadsheet_name: 'Planilla_Resenas',
       sheet_name: 'Raw_Resenas'
@@ -447,7 +621,6 @@ app.post('/api/scraping/start', async (req, res) => {
   } catch (error) {
     console.error('Error starting scraping:', error)
     
-    // Simulate scraping for demo
     store.scrapingStatus = 'processing'
     setTimeout(() => {
       store.scrapingStatus = 'completed'
@@ -461,10 +634,8 @@ app.post('/api/scraping/start', async (req, res) => {
   }
 })
 
-// Check scraping status
 app.get('/api/scraping/status', async (req, res) => {
   try {
-    // If we have a task ID, check with scraper API
     if (store.taskId) {
       const response = await fetch(`${config.scraper.url}/task/${store.taskId}`)
       const data = await response.json()
@@ -488,155 +659,100 @@ app.get('/api/scraping/status', async (req, res) => {
 // MARKETING ROUTES
 // ============================================
 
-// Get marketing results
 app.get('/api/marketing/results', async (req, res) => {
   try {
-    const results = await getSheetData('Marketing_Analisis')
-    
-    if (results.length === 0) {
-      // Return demo data
-      return res.json({ 
-        results: [
-          {
-            id: 0,
-            Producto: 'Linterna LED Recargable',
-            'Puntos de Dolor': 'Baterías que duran poco, luz débil, dificultad para cargar',
-            'Insights': 'Los usuarios valoran la potencia y la versatilidad, especialmente la función de powerbank',
-            'Gancho (Hook)': '¡Ilumina tu camino y carga tu celular al mismo tiempo! La linterna que lo hace todo.',
-            Fecha: new Date().toISOString(),
-            estado_aprobacion: 'pendiente',
-            publicado: 'no'
-          },
-          {
-            id: 1,
-            Producto: 'Cámara de Seguridad WiFi',
-            'Puntos de Dolor': 'Configuración complicada, conexión inestable, app poco intuitiva',
-            'Insights': 'Usuarios buscan tranquilidad y monitoreo remoto fácil, valoran la visión nocturna',
-            'Gancho (Hook)': 'Tu hogar protegido 24/7 desde tu celular. Configúrala en 5 minutos.',
-            Fecha: new Date().toISOString(),
-            estado_aprobacion: 'pendiente',
-            publicado: 'no'
-          }
-        ]
+    if (sheetsClient) {
+      const response = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: config.sheets.id,
+        range: 'Marketing_Analisis!A:H'
       })
+      
+      const rows = response.data.values || []
+      
+      if (rows.length < 2) {
+        return res.json({ results: [] })
+      }
+      
+      const results = rows.slice(1).map((row, index) => ({
+        id: index,
+        Producto: row[0] || '',
+        'Puntos de Dolor': row[1] || '',
+        'Insights': row[2] || '',
+        'Gancho (Hook)': row[3] || '',
+        Fecha: row[4] || '',
+        estado_aprobacion: row[5] || 'pendiente',
+        publicado: row[6] || 'no',
+        woo_product_id: row[7] || ''
+      }))
+      
+      return res.json({ results })
     }
     
-    // Add default status fields if not present
-    const formattedResults = results.map((r, index) => ({
-      ...r,
-      id: index,
-      estado_aprobacion: r.estado_aprobacion || 'pendiente',
-      publicado: r.publicado || 'no'
-    }))
-    
-    res.json({ results: formattedResults })
+    res.json({ 
+      results: [
+        {
+          id: 0,
+          Producto: 'Producto Demo',
+          'Puntos de Dolor': 'Pain points de ejemplo',
+          'Insights': 'Insights de ejemplo',
+          'Gancho (Hook)': 'Hook publicitario de ejemplo',
+          Fecha: new Date().toISOString(),
+          estado_aprobacion: 'pendiente',
+          publicado: 'no'
+        }
+      ]
+    })
   } catch (error) {
     console.error('Error getting marketing results:', error)
     res.status(500).json({ error: error.message })
   }
 })
 
-// Update product status (approve/reject)
 app.put('/api/marketing/:id/status', async (req, res) => {
   try {
     const { id } = req.params
     const { status } = req.body
+    const rowNumber = parseInt(id) + 2
     
-    // Update in Google Sheets
-    // Assuming estado_aprobacion is column F (index 5)
-    await updateSheetCell('Marketing_Analisis', parseInt(id), 'F', status)
+    if (sheetsClient) {
+      await sheetsClient.spreadsheets.values.update({
+        spreadsheetId: config.sheets.id,
+        range: `Marketing_Analisis!F${rowNumber}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[status]] }
+      })
+    }
     
     res.json({ success: true, status })
   } catch (error) {
     console.error('Error updating status:', error)
-    res.json({ success: true, status: req.body.status }) // Return success for demo
+    res.json({ success: true, status: req.body.status })
   }
 })
-
-// ============================================
-// PUBLISH ROUTES
-// ============================================
-
-// Publish product to WooCommerce
-app.post('/api/products/:id/publish', async (req, res) => {
-  try {
-    const { id } = req.params
-    
-    // Get marketing data for this product
-    const results = await getSheetData('Marketing_Analisis')
-    const product = results[parseInt(id)]
-    
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' })
-    }
-    
-    // Create product in WooCommerce
-    const wooProduct = await createWooProduct({
-      name: product.Producto || 'Producto sin nombre',
-      type: 'simple',
-      status: 'draft', // Start as draft
-      description: `
-        <h3>Características</h3>
-        <p>${product.Insights || ''}</p>
-        <h3>¿Por qué elegirlo?</h3>
-        <p>${product['Gancho (Hook)'] || ''}</p>
-      `,
-      short_description: product['Gancho (Hook)'] || '',
-      categories: [],
-      tags: [
-        { name: 'dropshipping' },
-        { name: 'importado' }
-      ]
-    })
-    
-    // Update sheet to mark as published
-    await updateSheetCell('Marketing_Analisis', parseInt(id), 'G', 'si')
-    await updateSheetCell('Marketing_Analisis', parseInt(id), 'H', wooProduct.id.toString())
-    
-    res.json({ 
-      success: true, 
-      wooProductId: wooProduct.id,
-      message: 'Producto publicado en WooCommerce'
-    })
-  } catch (error) {
-    console.error('Error publishing product:', error)
-    res.json({ 
-      success: true, 
-      wooProductId: 'demo-' + Date.now(),
-      message: 'Producto publicado (demo)'
-    })
-  }
-})
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-function detectMarketplace(url) {
-  if (!url) return 'Desconocido'
-  if (url.includes('mercadolibre')) return 'MercadoLibre'
-  if (url.includes('amazon')) return 'Amazon'
-  if (url.includes('aliexpress')) return 'AliExpress'
-  if (url.includes('ebay')) return 'eBay'
-  return 'Otro'
-}
 
 // ============================================
 // START SERVER
 // ============================================
 
 async function start() {
+  // Initialize Auth
+  initAuth()
+  
   // Initialize Google Sheets
   await initGoogleSheets()
   
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`
-╔════════════════════════════════════════════╗
-║     DropShip Manager Backend v1.0          ║
-╠════════════════════════════════════════════╣
-║  Server running on port ${PORT}               ║
-║  Environment: ${process.env.NODE_ENV || 'development'}             ║
-╚════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════╗
+║           DropShip Manager Backend v1.1                    ║
+╠════════════════════════════════════════════════════════════╣
+║  Server running on port ${PORT}                               ║
+║  Environment: ${(process.env.NODE_ENV || 'development').padEnd(20)}            ║
+║  Auth: Enabled                                             ║
+╠════════════════════════════════════════════════════════════╣
+║  Default admin: admin                                      ║
+║  ⚠️  Change password on first login!                        ║
+╚════════════════════════════════════════════════════════════╝
     `)
   })
 }

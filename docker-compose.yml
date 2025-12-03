@@ -6,9 +6,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3200:80"
+      - "${FRONTEND_PORT:-3200}:80"
     environment:
-      - VITE_API_URL=http://localhost:3201/api
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3201/api}
     depends_on:
       - backend
     restart: unless-stopped
@@ -20,20 +20,66 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "3201:3201"
+      - "${BACKEND_PORT:-3201}:3201"
+    volumes:
+      # Volumen para persistir datos de usuarios
+      - dropship-data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=3201
-      - N8N_WEBHOOK_BASE_URL=${N8N_WEBHOOK_BASE_URL:-http://192.168.0.111:5678/webhook}
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-credentials.json
+      
+      # ============================================
+      # GOOGLE SHEETS - VARIABLES INDIVIDUALES
+      # (Recomendado para repositorios públicos)
+      # ============================================
+      - GOOGLE_TYPE=${GOOGLE_TYPE:-service_account}
+      - GOOGLE_PROJECT_ID=${GOOGLE_PROJECT_ID}
+      - GOOGLE_PRIVATE_KEY_ID=${GOOGLE_PRIVATE_KEY_ID}
+      - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
+      - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_AUTH_URI=${GOOGLE_AUTH_URI:-https://accounts.google.com/o/oauth2/auth}
+      - GOOGLE_TOKEN_URI=${GOOGLE_TOKEN_URI:-https://oauth2.googleapis.com/token}
+      - GOOGLE_AUTH_PROVIDER_CERT_URL=${GOOGLE_AUTH_PROVIDER_CERT_URL:-https://www.googleapis.com/oauth2/v1/certs}
+      - GOOGLE_CLIENT_CERT_URL=${GOOGLE_CLIENT_CERT_URL}
+      - GOOGLE_UNIVERSE_DOMAIN=${GOOGLE_UNIVERSE_DOMAIN:-googleapis.com}
+      
+      # ID de la planilla de Google Sheets
       - GOOGLE_SHEETS_ID=${GOOGLE_SHEETS_ID:-1X6Dxum7dBLMPSp_nWMS9--43PWIX5mWaGlq1a6VVSF0}
+      
+      # ============================================
+      # AUTENTICACIÓN
+      # ============================================
+      - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-Admin@123456}
+      
+      # ============================================
+      # n8n
+      # ============================================
+      - N8N_WEBHOOK_BASE_URL=${N8N_WEBHOOK_BASE_URL:-http://192.168.0.111:5678/webhook}
+      - N8N_WEBHOOK_SCRAPING=${N8N_WEBHOOK_SCRAPING:-711c69a4-3f91-4fd4-831d-60c56039814a}
+      - N8N_WEBHOOK_ADD_PRODUCT=${N8N_WEBHOOK_ADD_PRODUCT:-add-product}
+      - N8N_WEBHOOK_GET_RESULTS=${N8N_WEBHOOK_GET_RESULTS:-get-results}
+      - N8N_WEBHOOK_PUBLISH=${N8N_WEBHOOK_PUBLISH:-publish-product}
+      
+      # ============================================
+      # SCRAPER API
+      # ============================================
+      - SCRAPER_API_URL=${SCRAPER_API_URL:-http://192.168.0.111:5050}
+      
+      # ============================================
+      # WOOCOMMERCE
+      # ============================================
       - WOO_URL=${WOO_URL}
       - WOO_CONSUMER_KEY=${WOO_CONSUMER_KEY}
       - WOO_CONSUMER_SECRET=${WOO_CONSUMER_SECRET}
-      - SCRAPER_API_URL=${SCRAPER_API_URL:-http://192.168.0.111:5050}
+      
     restart: unless-stopped
     networks:
       - dropship-network
+
+volumes:
+  dropship-data:
+    driver: local
 
 networks:
   dropship-network:

@@ -2,7 +2,7 @@
 FROM node:20-alpine
 
 # Install useful tools
-RUN apk add --no-cache nano curl
+RUN apk add --no-cache nano curl wget bash
 
 WORKDIR /app
 

@@ -160,6 +160,7 @@ async function callN8nWebhook(webhookId, data = {}) {
   try {
     const url = `${config.n8n.baseUrl}/${webhookId}`
     console.log(`Calling n8n webhook: ${url}`)
+    console.log('Webhook data:', JSON.stringify(data))
     
     const response = await fetch(url, {
       method: 'POST',
@@ -167,11 +168,28 @@ async function callN8nWebhook(webhookId, data = {}) {
       body: JSON.stringify(data)
     })
     
+    console.log('n8n response status:', response.status)
+    
+    // Get response as text first
+    const responseText = await response.text()
+    console.log('n8n response body:', responseText)
+    
     if (!response.ok) {
-      throw new Error(`n8n webhook failed: ${response.status}`)
+      throw new Error(`n8n webhook failed: ${response.status} - ${responseText}`)
     }
     
-    return await response.json()
+    // Try to parse as JSON, but handle empty or non-JSON responses
+    if (!responseText || responseText.trim() === '') {
+      console.log('n8n returned empty response, assuming success')
+      return { success: true }
+    }
+    
+    try {
+      return JSON.parse(responseText)
+    } catch (parseError) {
+      console.log('n8n response is not JSON, returning as text')
+      return { success: true, message: responseText }
+    }
   } catch (error) {
     console.error('n8n webhook error:', error.message)
     throw error
@@ -228,22 +246,42 @@ app.get('/api/health', (req, res) => {
 
 // Get all products (from Raw_Resenas sheet)
 app.get('/api/products', async (req, res) => {
+  console.log('=== GET PRODUCTS REQUEST ===')
+  
   try {
-    const products = await getSheetData('Raw_Resenas')
-    
-    if (products.length === 0 && store.products.length > 0) {
-      return res.json({ products: store.products })
+    if (sheetsClient) {
+      const response = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: config.sheets.id,
+        range: 'Raw_Resenas!A:G'
+      })
+      
+      const rows = response.data.values || []
+      console.log('Rows from sheet:', rows.length)
+      
+      if (rows.length < 2) {
+        return res.json({ products: [] })
+      }
+      
+      const headers = rows[0]
+      const products = rows.slice(1)
+        .map((row, index) => ({
+          id: index,
+          url: row[0] || '',
+          title: row[1] || '',
+          rating: row[2] || '',
+          date: row[3] || '',
+          status: row[6] || 'pending',
+          marketplace: detectMarketplace(row[0] || '')
+        }))
+        // Filtrar los eliminados
+        .filter(p => p.status !== 'deleted' && p.url)
+      
+      console.log('Products after filter:', products.length)
+      return res.json({ products })
     }
     
-    const formattedProducts = products.map((p, index) => ({
-      id: index,
-      url: p.URL || p.url || '',
-      title: p.titulo_resenas || p.titulo || '',
-      status: p.estado || 'pending',
-      marketplace: detectMarketplace(p.URL || p.url || '')
-    }))
-    
-    res.json({ products: formattedProducts })
+    // Fallback to local store
+    res.json({ products: store.products })
   } catch (error) {
     console.error('Error getting products:', error)
     res.json({ products: store.products })
@@ -339,15 +377,51 @@ app.post('/api/products/add', async (req, res) => {
 
 // Delete a product
 app.delete('/api/products/:id', async (req, res) => {
+  console.log('=== DELETE PRODUCT REQUEST ===')
+  const { id } = req.params
+  console.log('Product ID to delete:', id)
+  
   try {
-    const { id } = req.params
-    store.products = store.products.filter((_, i) => i !== parseInt(id))
-    res.json({ success: true })
+    // Remove from local store
+    const indexToRemove = parseInt(id)
+    
+    if (store.products.length > indexToRemove) {
+      const removed = store.products.splice(indexToRemove, 1)
+      console.log('Removed from local store:', removed)
+    }
+    
+    // Note: Para eliminar de Google Sheets necesitaríamos:
+    // 1. Leer todas las filas
+    // 2. Identificar la fila a eliminar
+    // 3. Usar batchUpdate para eliminar la fila
+    // Por ahora solo marcamos como eliminado o lo manejamos en memoria
+    
+    // Opción: Marcar como "deleted" en la hoja en lugar de eliminar
+    if (sheetsClient) {
+      try {
+        // Actualizar el estado a "deleted" en la columna G (estado)
+        const rowNumber = indexToRemove + 2 // +1 por header, +1 porque sheets es 1-indexed
+        
+        await sheetsClient.spreadsheets.values.update({
+          spreadsheetId: config.sheets.id,
+          range: `Raw_Resenas!G${rowNumber}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [['deleted']]
+          }
+        })
+        console.log('Marked as deleted in sheet, row:', rowNumber)
+      } catch (sheetError) {
+        console.error('Error updating sheet:', sheetError.message)
+      }
+    }
+    
+    res.json({ success: true, message: 'Producto eliminado' })
   } catch (error) {
+    console.error('Error deleting product:', error)
     res.status(500).json({ error: error.message })
   }
 })
-
 // ============================================
 // SCRAPING ROUTES
 // ============================================

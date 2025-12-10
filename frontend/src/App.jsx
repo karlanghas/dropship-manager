@@ -1164,7 +1164,7 @@ function ProductForm({ onAddProduct, loading }) {
 // ============================================
 // PRODUCT LIST WITH TIMER
 // ============================================
-function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, setScrapingStatus, loading, addNotification }) {
+function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, setScrapingStatus, loading, addNotification, onComplete }) {
   const timer = useTimer()
   const api = useApi()
 
@@ -1187,6 +1187,11 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
       setScrapingStatus('completed')
       timer.stop()
       addNotification({ type: 'success', message: '¡Marcado como completado!' })
+      
+      // Cargar resultados y cambiar a la pestaña de resultados
+      if (onComplete) {
+        onComplete()
+      }
     } catch (err) {
       addNotification({ type: 'error', message: 'Error al marcar como completado' })
     }
@@ -1496,7 +1501,9 @@ function AppContent() {
 
   const loadMarketingResults = async () => {
     try {
+      console.log('Loading marketing results...')
       const data = await api.request('/marketing/results')
+      console.log('Marketing results loaded:', data)
       setMarketingResults(data.results || [])
     } catch (err) {
       console.error('Error loading results:', err)
@@ -1523,6 +1530,11 @@ function AppContent() {
     }
   }
 
+  const handleScrapingComplete = () => {
+    loadMarketingResults()
+    setActiveTab('results')
+  }
+
   const handleRunScraping = async () => {
     try {
       setScrapingStatus('processing')
@@ -1539,7 +1551,7 @@ function AppContent() {
             clearInterval(pollInterval)
             setScrapingStatus('completed')
             addNotification({ type: 'success', message: `¡Análisis completado!${status.newResults ? ` (${status.newResults} nuevos resultados)` : ''}` })
-            loadMarketingResults()
+            handleScrapingComplete()
           } else if (status.status === 'error') {
             clearInterval(pollInterval)
             setScrapingStatus('error')
@@ -1620,6 +1632,7 @@ function AppContent() {
               setScrapingStatus={setScrapingStatus}
               loading={api.loading}
               addNotification={addNotification}
+              onComplete={handleScrapingComplete}
             />
           </div>
         )}

@@ -24,7 +24,33 @@ const app = express()
 const PORT = process.env.PORT || 3201
 
 // Middleware
-app.use(cors())
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (como mobile apps o curl)
+    if (!origin) return callback(null, true)
+    
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      'https://dsm.infociber.cl',
+      'http://dsm.infociber.cl',
+      'http://localhost:3200',
+      'http://localhost:5173',
+      process.env.APP_URL
+    ].filter(Boolean)
+    
+    if (allowedOrigins.includes(origin) || origin.includes('localhost')) {
+      callback(null, true)
+    } else {
+      console.log('CORS blocked origin:', origin)
+      callback(null, true) // En desarrollo, permitir todo
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}
+
+app.use(cors(corsOptions))
 app.use(express.json())
 
 // Configuration
@@ -407,6 +433,7 @@ app.post('/api/users/:username/reset-password', authMiddleware, adminMiddleware,
 app.use('/api/products', authMiddleware)
 app.use('/api/scraping', authMiddleware)
 app.use('/api/marketing', authMiddleware)
+app.use('/api/dropi', authMiddleware)
 
 // ============================================
 // PRODUCTS ROUTES
@@ -727,6 +754,138 @@ app.put('/api/marketing/:id/status', async (req, res) => {
   } catch (error) {
     console.error('Error updating status:', error)
     res.json({ success: true, status: req.body.status })
+  }
+})
+
+// ============================================
+// DROPI ROUTES
+// ============================================
+
+// Buscar productos en el catálogo de Dropi
+app.get('/api/dropi/search', async (req, res) => {
+  console.log('=== DROPI SEARCH ===')
+  const { query } = req.query
+  console.log('Search query:', query)
+  
+  try {
+    // Si hay API de Dropi configurada, usarla
+    if (process.env.DROPI_API_URL && process.env.DROPI_API_KEY) {
+      const response = await fetch(`${process.env.DROPI_API_URL}/products/search?q=${encodeURIComponent(query)}`, {
+        headers: {
+          'Authorization': `Bearer ${process.env.DROPI_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        return res.json({ products: data.products || data })
+      }
+    }
+    
+    // Si no hay API configurada, devolver datos demo
+    console.log('Dropi API not configured, returning demo data')
+    const demoProducts = [
+      {
+        id: 'dropi-1',
+        name: query || 'Producto Similar 1',
+        image: null,
+        price: 15990,
+        suggestedPrice: 29990,
+        sku: 'DRP-001',
+        stock: 50,
+        description: 'Producto de alta calidad'
+      },
+      {
+        id: 'dropi-2',
+        name: `${query || 'Producto'} Premium`,
+        image: null,
+        price: 19990,
+        suggestedPrice: 39990,
+        sku: 'DRP-002',
+        stock: 30,
+        description: 'Versión premium con características mejoradas'
+      },
+      {
+        id: 'dropi-3',
+        name: `${query || 'Producto'} Básico`,
+        image: null,
+        price: 9990,
+        suggestedPrice: 19990,
+        sku: 'DRP-003',
+        stock: 100,
+        description: 'Opción económica'
+      }
+    ]
+    
+    res.json({ products: demoProducts })
+  } catch (error) {
+    console.error('Dropi search error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// Publicar producto de Dropi en la tienda
+app.post('/api/dropi/publish', async (req, res) => {
+  console.log('=== DROPI PUBLISH ===')
+  const { dropiProductId, price, name } = req.body
+  console.log('Publishing:', { dropiProductId, price, name })
+  
+  try {
+    // Si hay API de Dropi configurada, usarla
+    if (process.env.DROPI_API_URL && process.env.DROPI_API_KEY) {
+      // Primero importar el producto de Dropi a WooCommerce
+      const response = await fetch(`${process.env.DROPI_API_URL}/products/${dropiProductId}/import`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.DROPI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          price: price,
+          store_url: config.woocommerce.url
+        })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        return res.json({ 
+          success: true, 
+          productId: data.product_id,
+          message: 'Producto importado correctamente'
+        })
+      }
+    }
+    
+    // Si hay WooCommerce configurado, crear producto directamente
+    if (config.woocommerce.url && config.woocommerce.consumerKey) {
+      const wooProduct = await createWooProduct({
+        name: name,
+        type: 'simple',
+        regular_price: String(price),
+        status: 'publish',
+        meta_data: [
+          { key: '_dropi_product_id', value: dropiProductId }
+        ]
+      })
+      
+      return res.json({
+        success: true,
+        productId: wooProduct.id,
+        message: 'Producto creado en WooCommerce'
+      })
+    }
+    
+    // Demo mode
+    console.log('No Dropi/WooCommerce API configured, demo mode')
+    res.json({
+      success: true,
+      productId: 'demo-' + Date.now(),
+      message: 'Producto importado (modo demo)'
+    })
+  } catch (error) {
+    console.error('Dropi publish error:', error)
+    res.status(500).json({ error: error.message })
   }
 })
 

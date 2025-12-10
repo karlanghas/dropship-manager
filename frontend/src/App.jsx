@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from 'react'
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react'
 import { 
   Package, 
   Plus, 
@@ -29,11 +29,18 @@ import {
   Shield,
   EyeOff,
   Settings,
-  X
+  X,
+  Clock,
+  Search,
+  DollarSign,
+  Check,
+  ChevronLeft,
+  Store,
+  Image as ImageIcon
 } from 'lucide-react'
 
 // API Configuration
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+const API_URL = '/api'
 
 // ============================================
 // AUTH CONTEXT
@@ -164,6 +171,48 @@ function useApi() {
 }
 
 // ============================================
+// TIMER HOOK
+// ============================================
+function useTimer() {
+  const [seconds, setSeconds] = useState(0)
+  const [isRunning, setIsRunning] = useState(false)
+  const intervalRef = useRef(null)
+
+  const start = () => {
+    setSeconds(0)
+    setIsRunning(true)
+  }
+
+  const stop = () => {
+    setIsRunning(false)
+  }
+
+  const reset = () => {
+    setSeconds(0)
+    setIsRunning(false)
+  }
+
+  useEffect(() => {
+    if (isRunning) {
+      intervalRef.current = setInterval(() => {
+        setSeconds(s => s + 1)
+      }, 1000)
+    } else {
+      clearInterval(intervalRef.current)
+    }
+    return () => clearInterval(intervalRef.current)
+  }, [isRunning])
+
+  const formatTime = () => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  return { seconds, isRunning, start, stop, reset, formatTime }
+}
+
+// ============================================
 // NOTIFICATION SYSTEM
 // ============================================
 function useNotifications() {
@@ -245,7 +294,6 @@ function LoginScreen({ onLogin, addNotification }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-surface-100 to-surface-200 dark:from-surface-900 dark:to-surface-950 p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-600 mb-4">
             <ShoppingCart className="w-8 h-8 text-white" />
@@ -254,7 +302,6 @@ function LoginScreen({ onLogin, addNotification }) {
           <p className="text-surface-500 dark:text-surface-400 mt-2">Inicia sesión para continuar</p>
         </div>
 
-        {/* Login Form */}
         <form onSubmit={handleSubmit} className="card p-8">
           {error && (
             <div className="mb-6 p-4 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 flex items-center gap-3">
@@ -307,29 +354,18 @@ function LoginScreen({ onLogin, addNotification }) {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-3"
-            >
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3">
               {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Iniciando sesión...
-                </>
+                <><Loader2 className="w-5 h-5 animate-spin" /> Iniciando sesión...</>
               ) : (
-                <>
-                  <LogIn className="w-5 h-5" />
-                  Iniciar Sesión
-                </>
+                <><LogIn className="w-5 h-5" /> Iniciar Sesión</>
               )}
             </button>
           </div>
         </form>
 
-        {/* Footer */}
         <p className="text-center text-sm text-surface-500 dark:text-surface-400 mt-6">
-          DropShip Manager v1.1
+          DropShip Manager v1.2
         </p>
       </div>
     </div>
@@ -348,9 +384,7 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
   const [passwordErrors, setPasswordErrors] = useState([])
 
   useEffect(() => {
-    if (isOpen) {
-      loadUsers()
-    }
+    if (isOpen) loadUsers()
   }, [isOpen])
 
   const loadUsers = async () => {
@@ -382,7 +416,6 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
 
   const handleCreateUser = async (e) => {
     e.preventDefault()
-    
     const isValid = await validatePassword(newUser.password)
     if (!isValid) {
       addNotification({ type: 'error', message: 'La contraseña no cumple los requisitos' })
@@ -405,7 +438,6 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
 
   const handleDeleteUser = async (username) => {
     if (!confirm(`¿Estás seguro de eliminar a ${username}?`)) return
-
     try {
       await api.request(`/users/${username}`, { method: 'DELETE' })
       addNotification({ type: 'success', message: 'Usuario eliminado' })
@@ -430,7 +462,6 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="card w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col animate-fade-in">
-        {/* Header */}
         <div className="p-6 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
@@ -446,27 +477,18 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Create User Button */}
           {!showCreateForm && (
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="btn-primary w-full"
-            >
-              <Plus className="w-4 h-4" />
-              Crear Usuario
+            <button onClick={() => setShowCreateForm(true)} className="btn-primary w-full">
+              <Plus className="w-4 h-4" /> Crear Usuario
             </button>
           )}
 
-          {/* Create User Form */}
           {showCreateForm && (
             <form onSubmit={handleCreateUser} className="p-4 rounded-xl bg-surface-50 dark:bg-surface-800 space-y-4">
               <h3 className="font-medium flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Nuevo Usuario
+                <Plus className="w-4 h-4" /> Nuevo Usuario
               </h3>
-              
               <div className="grid sm:grid-cols-2 gap-4">
                 <input
                   type="text"
@@ -486,7 +508,6 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
                   <option value="admin">Administrador</option>
                 </select>
               </div>
-              
               <input
                 type="password"
                 placeholder="Contraseña"
@@ -498,34 +519,22 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
                 className="input"
                 required
               />
-              
               {passwordErrors.length > 0 && (
                 <div className="text-sm text-red-600 dark:text-red-400 space-y-1">
                   {passwordErrors.map((err, i) => (
                     <p key={i} className="flex items-center gap-2">
-                      <XCircle className="w-4 h-4" />
-                      {err}
+                      <XCircle className="w-4 h-4" /> {err}
                     </p>
                   ))}
                 </div>
               )}
-              
               <div className="flex gap-2">
-                <button type="submit" className="btn-primary flex-1">
-                  Crear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  className="btn-secondary"
-                >
-                  Cancelar
-                </button>
+                <button type="submit" className="btn-primary flex-1">Crear</button>
+                <button type="button" onClick={() => setShowCreateForm(false)} className="btn-secondary">Cancelar</button>
               </div>
             </form>
           )}
 
-          {/* Users List */}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
@@ -533,15 +542,10 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
           ) : (
             <div className="space-y-2">
               {users.map((user) => (
-                <div
-                  key={user.username}
-                  className="p-4 rounded-xl bg-surface-50 dark:bg-surface-800 flex items-center justify-between"
-                >
+                <div key={user.username} className="p-4 rounded-xl bg-surface-50 dark:bg-surface-800 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      user.role === 'admin' 
-                        ? 'bg-accent-100 dark:bg-accent-900/30' 
-                        : 'bg-surface-200 dark:bg-surface-700'
+                      user.role === 'admin' ? 'bg-accent-100 dark:bg-accent-900/30' : 'bg-surface-200 dark:bg-surface-700'
                     }`}>
                       {user.role === 'admin' 
                         ? <Shield className="w-5 h-5 text-accent-600 dark:text-accent-400" />
@@ -551,38 +555,22 @@ function UserManagementModal({ isOpen, onClose, addNotification }) {
                     <div>
                       <p className="font-medium flex items-center gap-2">
                         {user.username}
-                        {user.role === 'admin' && (
-                          <span className="badge badge-info">Admin</span>
-                        )}
-                        {user.isLocked && (
-                          <span className="badge badge-error">Bloqueado</span>
-                        )}
+                        {user.role === 'admin' && <span className="badge badge-info">Admin</span>}
+                        {user.isLocked && <span className="badge badge-error">Bloqueado</span>}
                       </p>
                       <p className="text-sm text-surface-500">
-                        {user.lastLogin 
-                          ? `Último acceso: ${new Date(user.lastLogin).toLocaleString()}`
-                          : 'Sin accesos'
-                        }
+                        {user.lastLogin ? `Último acceso: ${new Date(user.lastLogin).toLocaleString()}` : 'Sin accesos'}
                       </p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-2">
                     {user.isLocked && (
-                      <button
-                        onClick={() => handleUnlockUser(user.username)}
-                        className="btn-ghost p-2 rounded-lg text-green-600"
-                        title="Desbloquear"
-                      >
+                      <button onClick={() => handleUnlockUser(user.username)} className="btn-ghost p-2 rounded-lg text-green-600" title="Desbloquear">
                         <Unlock className="w-4 h-4" />
                       </button>
                     )}
                     {user.username !== 'admin' && (
-                      <button
-                        onClick={() => handleDeleteUser(user.username)}
-                        className="btn-ghost p-2 rounded-lg text-red-600"
-                        title="Eliminar"
-                      >
+                      <button onClick={() => handleDeleteUser(user.username)} className="btn-ghost p-2 rounded-lg text-red-600" title="Eliminar">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
@@ -625,12 +613,10 @@ function ChangePasswordModal({ isOpen, onClose, addNotification }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
     if (newPassword !== confirmPassword) {
       addNotification({ type: 'error', message: 'Las contraseñas no coinciden' })
       return
     }
-
     const isValid = await validatePassword(newPassword)
     if (!isValid) {
       addNotification({ type: 'error', message: 'La contraseña no cumple los requisitos' })
@@ -641,15 +627,10 @@ function ChangePasswordModal({ isOpen, onClose, addNotification }) {
     try {
       const response = await fetch(`${API_URL}/auth/change-password`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ currentPassword, newPassword })
       })
-
       const data = await response.json()
-
       if (response.ok) {
         addNotification({ type: 'success', message: 'Contraseña actualizada correctamente' })
         onClose()
@@ -677,43 +658,28 @@ function ChangePasswordModal({ isOpen, onClose, addNotification }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">Contraseña actual</label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="input"
-              required
-            />
+            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="input" required />
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-2">Nueva contraseña</label>
             <input
               type="password"
               value={newPassword}
-              onChange={(e) => {
-                setNewPassword(e.target.value)
-                validatePassword(e.target.value)
-              }}
+              onChange={(e) => { setNewPassword(e.target.value); validatePassword(e.target.value) }}
               className="input"
               required
             />
             {passwordErrors.length > 0 && (
               <div className="mt-2 text-sm text-red-600 dark:text-red-400 space-y-1">
                 {passwordErrors.map((err, i) => (
-                  <p key={i} className="flex items-center gap-2">
-                    <XCircle className="w-4 h-4" />
-                    {err}
-                  </p>
+                  <p key={i} className="flex items-center gap-2"><XCircle className="w-4 h-4" /> {err}</p>
                 ))}
               </div>
             )}
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-2">Confirmar contraseña</label>
             <input
@@ -724,16 +690,279 @@ function ChangePasswordModal({ isOpen, onClose, addNotification }) {
               required
             />
           </div>
-
           <div className="flex gap-2 pt-2">
             <button type="submit" disabled={loading} className="btn-primary flex-1">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar'}
             </button>
-            <button type="button" onClick={onClose} className="btn-secondary">
-              Cancelar
-            </button>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// DROPI PRODUCT MODAL
+// ============================================
+function DropiProductModal({ isOpen, onClose, product, addNotification }) {
+  const api = useApi()
+  const [loading, setLoading] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [dropiProducts, setDropiProducts] = useState([])
+  const [selectedProducts, setSelectedProducts] = useState({})
+  const [prices, setPrices] = useState({})
+  const [publishing, setPublishing] = useState(false)
+  const [publishResults, setPublishResults] = useState([])
+
+  useEffect(() => {
+    if (isOpen && product) {
+      searchDropiProducts()
+    }
+  }, [isOpen, product])
+
+  const searchDropiProducts = async () => {
+    setSearching(true)
+    try {
+      // Llamar al API para buscar productos en Dropi
+      const data = await api.request(`/dropi/search?query=${encodeURIComponent(product?.Producto || '')}`)
+      const products = data.products || []
+      setDropiProducts(products)
+      
+      // Inicializar precios con los sugeridos
+      const initialPrices = {}
+      products.forEach(p => {
+        initialPrices[p.id] = p.suggestedPrice || p.price || 0
+      })
+      setPrices(initialPrices)
+    } catch (error) {
+      // Si no hay API de Dropi configurada, mostrar datos demo
+      const demoProducts = [
+        { id: 1, name: product?.Producto || 'Producto Similar 1', image: null, price: 15990, suggestedPrice: 29990, sku: 'DRP-001' },
+        { id: 2, name: `${product?.Producto || 'Producto'} Premium`, image: null, price: 19990, suggestedPrice: 39990, sku: 'DRP-002' },
+        { id: 3, name: `${product?.Producto || 'Producto'} Básico`, image: null, price: 9990, suggestedPrice: 19990, sku: 'DRP-003' },
+      ]
+      setDropiProducts(demoProducts)
+      const initialPrices = {}
+      demoProducts.forEach(p => {
+        initialPrices[p.id] = p.suggestedPrice
+      })
+      setPrices(initialPrices)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const toggleProduct = (productId) => {
+    setSelectedProducts(prev => ({
+      ...prev,
+      [productId]: !prev[productId]
+    }))
+  }
+
+  const updatePrice = (productId, price) => {
+    setPrices(prev => ({
+      ...prev,
+      [productId]: parseFloat(price) || 0
+    }))
+  }
+
+  const handlePublish = async () => {
+    const selected = dropiProducts.filter(p => selectedProducts[p.id])
+    if (selected.length === 0) {
+      addNotification({ type: 'warning', message: 'Selecciona al menos un producto' })
+      return
+    }
+
+    setPublishing(true)
+    const results = []
+
+    for (const product of selected) {
+      try {
+        await api.request('/dropi/publish', {
+          method: 'POST',
+          body: JSON.stringify({
+            dropiProductId: product.id,
+            price: prices[product.id],
+            name: product.name
+          })
+        })
+        results.push({ ...product, success: true })
+      } catch (error) {
+        results.push({ ...product, success: false, error: error.message })
+      }
+    }
+
+    setPublishResults(results)
+    setPublishing(false)
+
+    const successCount = results.filter(r => r.success).length
+    if (successCount > 0) {
+      addNotification({ type: 'success', message: `${successCount} producto(s) cargado(s) a la tienda` })
+    }
+    if (successCount < results.length) {
+      addNotification({ type: 'error', message: `${results.length - successCount} producto(s) con error` })
+    }
+  }
+
+  const selectedCount = Object.values(selectedProducts).filter(Boolean).length
+
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="card w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in">
+        {/* Header */}
+        <div className="p-6 border-b flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+              <Store className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+            </div>
+            <div>
+              <h2 className="font-display font-semibold text-xl">Cargar a Tienda (Dropi)</h2>
+              <p className="text-sm text-surface-500">Productos similares encontrados</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-2 rounded-xl">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {searching ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-10 h-10 animate-spin text-primary-500 mb-4" />
+              <p className="text-surface-500">Buscando productos en catálogo Dropi...</p>
+            </div>
+          ) : publishResults.length > 0 ? (
+            <div className="space-y-4">
+              <h3 className="font-medium text-lg">Resultados de carga</h3>
+              {publishResults.map((result, index) => (
+                <div key={index} className={`p-4 rounded-xl flex items-center gap-4 ${
+                  result.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+                }`}>
+                  {result.success ? (
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-red-600" />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium">{result.name}</p>
+                    <p className="text-sm text-surface-500">
+                      {result.success ? 'Cargado correctamente' : result.error}
+                    </p>
+                  </div>
+                  <span className="font-mono font-medium">
+                    ${prices[result.id]?.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+              <button onClick={onClose} className="btn-primary w-full mt-4">
+                Cerrar
+              </button>
+            </div>
+          ) : dropiProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Search className="w-12 h-12 text-surface-300 mb-4" />
+              <p className="text-surface-500">No se encontraron productos similares</p>
+              <button onClick={onClose} className="btn-secondary mt-4">
+                <ChevronLeft className="w-4 h-4" /> Volver
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-surface-500">
+                Selecciona los productos que deseas cargar a tu tienda. Puedes ajustar el precio de venta.
+              </p>
+              
+              {dropiProducts.map((dropiProduct) => (
+                <div
+                  key={dropiProduct.id}
+                  className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                    selectedProducts[dropiProduct.id]
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                      : 'border-surface-200 dark:border-surface-700 hover:border-surface-300'
+                  }`}
+                  onClick={() => toggleProduct(dropiProduct.id)}
+                >
+                  <div className="flex items-start gap-4">
+                    {/* Checkbox */}
+                    <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                      selectedProducts[dropiProduct.id]
+                        ? 'bg-primary-500 border-primary-500'
+                        : 'border-surface-300 dark:border-surface-600'
+                    }`}>
+                      {selectedProducts[dropiProduct.id] && (
+                        <Check className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+
+                    {/* Image placeholder */}
+                    <div className="w-16 h-16 rounded-lg bg-surface-100 dark:bg-surface-800 flex items-center justify-center flex-shrink-0">
+                      {dropiProduct.image ? (
+                        <img src={dropiProduct.image} alt={dropiProduct.name} className="w-full h-full object-cover rounded-lg" />
+                      ) : (
+                        <ImageIcon className="w-6 h-6 text-surface-400" />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium truncate">{dropiProduct.name}</h4>
+                      <p className="text-sm text-surface-500">SKU: {dropiProduct.sku}</p>
+                      <div className="flex items-center gap-4 mt-2">
+                        <span className="text-sm text-surface-500">
+                          Costo: <span className="font-mono">${dropiProduct.price?.toLocaleString()}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Price input */}
+                    <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <label className="text-xs text-surface-500 block mb-1">Precio venta</label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+                        <input
+                          type="number"
+                          value={prices[dropiProduct.id] || ''}
+                          onChange={(e) => updatePrice(dropiProduct.id, e.target.value)}
+                          className="input pl-9 w-32 text-right font-mono"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!searching && dropiProducts.length > 0 && publishResults.length === 0 && (
+          <div className="p-6 border-t flex items-center justify-between bg-surface-50 dark:bg-surface-800/50">
+            <button onClick={onClose} className="btn-secondary">
+              <ChevronLeft className="w-4 h-4" /> Cancelar
+            </button>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-surface-500">
+                {selectedCount} producto(s) seleccionado(s)
+              </span>
+              <button
+                onClick={handlePublish}
+                disabled={selectedCount === 0 || publishing}
+                className="btn-primary"
+              >
+                {publishing ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Cargando...</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Cargar a Tienda</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -757,21 +986,12 @@ function Header({ darkMode, setDarkMode, activeTab, setActiveTab }) {
   return (
     <>
       <Notifications notifications={notifications} />
-      <UserManagementModal
-        isOpen={showUserManagement}
-        onClose={() => setShowUserManagement(false)}
-        addNotification={addNotification}
-      />
-      <ChangePasswordModal
-        isOpen={showChangePassword}
-        onClose={() => setShowChangePassword(false)}
-        addNotification={addNotification}
-      />
+      <UserManagementModal isOpen={showUserManagement} onClose={() => setShowUserManagement(false)} addNotification={addNotification} />
+      <ChangePasswordModal isOpen={showChangePassword} onClose={() => setShowChangePassword(false)} addNotification={addNotification} />
 
       <header className="glass sticky top-0 z-40 border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center">
                 <ShoppingCart className="w-5 h-5 text-white" />
@@ -782,19 +1002,16 @@ function Header({ darkMode, setDarkMode, activeTab, setActiveTab }) {
               </div>
             </div>
 
-            {/* Navigation */}
             <nav className="hidden md:flex items-center gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-xl">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`
-                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                    ${activeTab === tab.id 
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === tab.id 
                       ? 'bg-white dark:bg-surface-900 text-primary-600 dark:text-primary-400 shadow-sm' 
                       : 'text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-200'
-                    }
-                  `}
+                  }`}
                 >
                   <tab.icon className="w-4 h-4" />
                   {tab.label}
@@ -802,28 +1019,18 @@ function Header({ darkMode, setDarkMode, activeTab, setActiveTab }) {
               ))}
             </nav>
 
-            {/* Actions */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="btn-ghost p-2.5 rounded-xl"
-                title={darkMode ? 'Modo claro' : 'Modo oscuro'}
-              >
+              <button onClick={() => setDarkMode(!darkMode)} className="btn-ghost p-2.5 rounded-xl" title={darkMode ? 'Modo claro' : 'Modo oscuro'}>
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
 
-              {/* User Menu */}
               <div className="relative">
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                    {isAdmin ? (
-                      <Shield className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                    ) : (
-                      <User className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                    )}
+                    {isAdmin ? <Shield className="w-4 h-4 text-primary-600 dark:text-primary-400" /> : <User className="w-4 h-4 text-primary-600 dark:text-primary-400" />}
                   </div>
                   <span className="hidden sm:block text-sm font-medium">{user?.username}</span>
                 </button>
@@ -834,42 +1041,26 @@ function Header({ darkMode, setDarkMode, activeTab, setActiveTab }) {
                       <p className="font-medium">{user?.username}</p>
                       <p className="text-xs text-surface-500">{isAdmin ? 'Administrador' : 'Usuario'}</p>
                     </div>
-                    
                     {isAdmin && (
                       <button
-                        onClick={() => {
-                          setShowUserMenu(false)
-                          setShowUserManagement(true)
-                        }}
+                        onClick={() => { setShowUserMenu(false); setShowUserManagement(true) }}
                         className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
                       >
-                        <Users className="w-4 h-4" />
-                        <span className="text-sm">Gestión de Usuarios</span>
+                        <Users className="w-4 h-4" /> <span className="text-sm">Gestión de Usuarios</span>
                       </button>
                     )}
-                    
                     <button
-                      onClick={() => {
-                        setShowUserMenu(false)
-                        setShowChangePassword(true)
-                      }}
+                      onClick={() => { setShowUserMenu(false); setShowChangePassword(true) }}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
                     >
-                      <Key className="w-4 h-4" />
-                      <span className="text-sm">Cambiar Contraseña</span>
+                      <Key className="w-4 h-4" /> <span className="text-sm">Cambiar Contraseña</span>
                     </button>
-                    
                     <hr className="my-2" />
-                    
                     <button
-                      onClick={() => {
-                        setShowUserMenu(false)
-                        logout()
-                      }}
+                      onClick={() => { setShowUserMenu(false); logout() }}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
                     >
-                      <LogOut className="w-4 h-4" />
-                      <span className="text-sm">Cerrar Sesión</span>
+                      <LogOut className="w-4 h-4" /> <span className="text-sm">Cerrar Sesión</span>
                     </button>
                   </div>
                 )}
@@ -877,19 +1068,16 @@ function Header({ darkMode, setDarkMode, activeTab, setActiveTab }) {
             </div>
           </div>
 
-          {/* Mobile Navigation */}
           <nav className="md:hidden flex items-center gap-1 pb-3 overflow-x-auto scrollbar-thin">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
-                  ${activeTab === tab.id 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                  activeTab === tab.id 
                     ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
                     : 'text-surface-600 dark:text-surface-400'
-                  }
-                `}
+                }`}
               >
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
@@ -911,11 +1099,7 @@ function ProductForm({ onAddProduct, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    
-    const urlList = urls
-      .split(/[\n,]/)
-      .map(url => url.trim())
-      .filter(url => url.length > 0)
+    const urlList = urls.split(/[\n,]/).map(url => url.trim()).filter(url => url.length > 0)
 
     if (urlList.length === 0) {
       setError('Ingresa al menos una URL')
@@ -964,18 +1148,13 @@ function ProductForm({ onAddProduct, loading }) {
           />
           {error && (
             <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {error}
+              <AlertCircle className="w-4 h-4" /> {error}
             </p>
           )}
         </div>
 
         <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Agregando...</>
-          ) : (
-            <><Plus className="w-4 h-4" /> Agregar Productos</>
-          )}
+          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Agregando...</> : <><Plus className="w-4 h-4" /> Agregar Productos</>}
         </button>
       </div>
     </form>
@@ -983,9 +1162,24 @@ function ProductForm({ onAddProduct, loading }) {
 }
 
 // ============================================
-// PRODUCT LIST
+// PRODUCT LIST WITH TIMER
 // ============================================
-function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, loading }) {
+function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, loading, onScrapingComplete }) {
+  const timer = useTimer()
+
+  useEffect(() => {
+    if (scrapingStatus === 'processing' && !timer.isRunning) {
+      timer.start()
+    } else if (scrapingStatus === 'completed' || scrapingStatus === 'error') {
+      timer.stop()
+    }
+  }, [scrapingStatus])
+
+  const handleRunScraping = () => {
+    timer.reset()
+    onRunScraping()
+  }
+
   if (products.length === 0) {
     return (
       <div className="card p-8 text-center">
@@ -993,9 +1187,7 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
           <Package className="w-8 h-8 text-surface-400" />
         </div>
         <h3 className="font-display font-semibold text-lg mb-2">Sin productos</h3>
-        <p className="text-surface-500 dark:text-surface-400">
-          Agrega URLs de productos para comenzar
-        </p>
+        <p className="text-surface-500 dark:text-surface-400">Agrega URLs de productos para comenzar</p>
       </div>
     )
   }
@@ -1013,26 +1205,42 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
           </div>
         </div>
 
-        <button
-          onClick={onRunScraping}
-          disabled={loading || scrapingStatus === 'processing'}
-          className="btn-accent"
-        >
-          {scrapingStatus === 'processing' ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>
-          ) : (
-            <><Play className="w-4 h-4" /> Analizar Todos</>
-          )}
+        <button onClick={handleRunScraping} disabled={loading || scrapingStatus === 'processing'} className="btn-accent">
+          {scrapingStatus === 'processing' ? <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</> : <><Play className="w-4 h-4" /> Analizar Todos</>}
         </button>
       </div>
 
       {scrapingStatus === 'processing' && (
-        <div className="p-4 bg-accent-50 dark:bg-accent-900/20 border-b">
+        <div className="p-6 bg-gradient-to-r from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-accent-200 dark:border-accent-800"></div>
+                <div className="absolute inset-0 w-16 h-16 rounded-full border-4 border-accent-500 border-t-transparent animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-accent-600" />
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold text-accent-700 dark:text-accent-300 text-lg">Analizando productos...</p>
+                <p className="text-sm text-accent-600 dark:text-accent-400">El flujo n8n está procesando las reseñas</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-mono font-bold text-accent-700 dark:text-accent-300">{timer.formatTime()}</p>
+              <p className="text-sm text-accent-600 dark:text-accent-400">Tiempo transcurrido</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scrapingStatus === 'completed' && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border-b">
           <div className="flex items-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-accent-600" />
+            <CheckCircle className="w-6 h-6 text-green-600" />
             <div>
-              <p className="font-medium text-accent-700 dark:text-accent-300">Analizando productos...</p>
-              <p className="text-sm text-accent-600">Esto puede tomar unos minutos</p>
+              <p className="font-medium text-green-700 dark:text-green-300">¡Análisis completado!</p>
+              <p className="text-sm text-green-600">Tiempo total: {timer.formatTime()} - Ve a la pestaña Resultados</p>
             </div>
           </div>
         </div>
@@ -1044,7 +1252,6 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
             <div className="w-10 h-10 rounded-lg bg-surface-100 dark:bg-surface-800 flex items-center justify-center">
               <span className="font-mono text-sm">{index + 1}</span>
             </div>
-            
             <div className="flex-1 min-w-0">
               <p className="font-mono text-sm truncate">{product.url}</p>
               <div className="flex items-center gap-2 mt-1">
@@ -1057,7 +1264,6 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
                 {product.marketplace && <span className="badge badge-neutral">{product.marketplace}</span>}
               </div>
             </div>
-
             <div className="flex items-center gap-2">
               <a href={product.url} target="_blank" className="btn-ghost p-2 rounded-lg">
                 <ExternalLink className="w-4 h-4" />
@@ -1074,11 +1280,13 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
 }
 
 // ============================================
-// MARKETING RESULTS
+// MARKETING RESULTS - COLORES ACTUALIZADOS
 // ============================================
 function MarketingResults({ results, onApprove, onReject, onPublish, loading }) {
   const [filter, setFilter] = useState('all')
   const [expandedId, setExpandedId] = useState(null)
+  const [dropiModal, setDropiModal] = useState({ open: false, product: null })
+  const { notifications, addNotification } = useNotifications()
 
   const filteredResults = results.filter(result => {
     if (filter === 'all') return true
@@ -1087,6 +1295,12 @@ function MarketingResults({ results, onApprove, onReject, onPublish, loading }) 
     if (filter === 'rejected') return result.estado_aprobacion === 'rechazado'
     return true
   })
+
+  const handleApprove = async (resultId, result) => {
+    await onApprove(resultId)
+    // Abrir modal de Dropi después de aprobar
+    setDropiModal({ open: true, product: result })
+  }
 
   if (results.length === 0) {
     return (
@@ -1101,116 +1315,125 @@ function MarketingResults({ results, onApprove, onReject, onPublish, loading }) 
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {[
-          { id: 'all', label: 'Todos', count: results.length },
-          { id: 'pending', label: 'Pendientes', count: results.filter(r => r.estado_aprobacion === 'pendiente').length },
-          { id: 'approved', label: 'Aprobados', count: results.filter(r => r.estado_aprobacion === 'aprobado').length },
-          { id: 'rejected', label: 'Rechazados', count: results.filter(r => r.estado_aprobacion === 'rechazado').length },
-        ].map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-              filter === f.id 
-                ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
-                : 'bg-surface-100 dark:bg-surface-800 text-surface-600'
-            }`}
-          >
-            {f.label}
-            <span className="px-2 py-0.5 rounded-full bg-white dark:bg-surface-900 text-xs">{f.count}</span>
-          </button>
-        ))}
-      </div>
+    <>
+      <DropiProductModal
+        isOpen={dropiModal.open}
+        onClose={() => setDropiModal({ open: false, product: null })}
+        product={dropiModal.product}
+        addNotification={addNotification}
+      />
 
-      {/* Results */}
-      <div className="grid gap-4">
-        {filteredResults.map((result, index) => (
-          <div key={result.id || index} className="card-hover overflow-hidden">
-            <div className="p-4 cursor-pointer" onClick={() => setExpandedId(expandedId === index ? null : index)}>
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-white" />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-display font-semibold text-lg">{result.Producto || 'Producto'}</h4>
-                    <span className={`badge ${
-                      result.estado_aprobacion === 'pendiente' ? 'badge-warning' :
-                      result.estado_aprobacion === 'aprobado' ? 'badge-success' : 'badge-error'
-                    }`}>
-                      {result.estado_aprobacion || 'pendiente'}
-                    </span>
-                    {result.publicado === 'si' && <span className="badge badge-info">Publicado</span>}
+      <div className="space-y-4">
+        {/* Filters */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+          {[
+            { id: 'all', label: 'Todos', count: results.length },
+            { id: 'pending', label: 'Pendientes', count: results.filter(r => r.estado_aprobacion === 'pendiente').length },
+            { id: 'approved', label: 'Aprobados', count: results.filter(r => r.estado_aprobacion === 'aprobado').length },
+            { id: 'rejected', label: 'Rechazados', count: results.filter(r => r.estado_aprobacion === 'rechazado').length },
+          ].map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                filter === f.id 
+                  ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
+                  : 'bg-surface-100 dark:bg-surface-800 text-surface-600'
+              }`}
+            >
+              {f.label}
+              <span className="px-2 py-0.5 rounded-full bg-white dark:bg-surface-900 text-xs">{f.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Results */}
+        <div className="grid gap-4">
+          {filteredResults.map((result, index) => (
+            <div key={result.id || index} className="card-hover overflow-hidden">
+              <div className="p-4 cursor-pointer" onClick={() => setExpandedId(expandedId === index ? null : index)}>
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-accent-600 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-white" />
                   </div>
-                  
-                  {result['Gancho (Hook)'] && (
-                    <p className="mt-2 text-sm text-surface-600 dark:text-surface-300 line-clamp-2">
-                      <span className="font-medium text-accent-600">Hook:</span> {result['Gancho (Hook)']}
-                    </p>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-display font-semibold text-lg">{result.Producto || 'Producto'}</h4>
+                      <span className={`badge ${
+                        result.estado_aprobacion === 'pendiente' ? 'badge-warning' :
+                        result.estado_aprobacion === 'aprobado' ? 'badge-success' : 'badge-error'
+                      }`}>
+                        {result.estado_aprobacion || 'pendiente'}
+                      </span>
+                      {result.publicado === 'si' && <span className="badge badge-info">Publicado</span>}
+                    </div>
+                    {result['Gancho (Hook)'] && (
+                      <p className="mt-2 text-sm text-surface-600 dark:text-surface-300 line-clamp-2">
+                        <span className="font-medium" style={{ color: '#98c379' }}>Hook:</span> {result['Gancho (Hook)']}
+                      </p>
+                    )}
+                  </div>
+                  <Eye className={`w-5 h-5 transition-transform ${expandedId === index ? 'rotate-180' : ''}`} />
                 </div>
-
-                <Eye className={`w-5 h-5 transition-transform ${expandedId === index ? 'rotate-180' : ''}`} />
               </div>
+
+              {expandedId === index && (
+                <div className="px-4 pb-4 space-y-4 animate-fade-in">
+                  <hr />
+                  
+                  {/* Puntos de Dolor - Color #fe8181 */}
+                  <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(254, 129, 129, 0.15)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target className="w-4 h-4" style={{ color: '#fe8181' }} />
+                      <h5 className="font-medium" style={{ color: '#fe8181' }}>Puntos de Dolor</h5>
+                    </div>
+                    <p className="text-sm" style={{ color: '#fe8181' }}>{result['Puntos de Dolor'] || 'Sin datos'}</p>
+                  </div>
+
+                  {/* Insights - Color #03b2cb */}
+                  <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(3, 178, 203, 0.15)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Zap className="w-4 h-4" style={{ color: '#03b2cb' }} />
+                      <h5 className="font-medium" style={{ color: '#03b2cb' }}>Insights</h5>
+                    </div>
+                    <p className="text-sm" style={{ color: '#03b2cb' }}>{result['Insights'] || 'Sin datos'}</p>
+                  </div>
+
+                  {/* Hook - Color #98c379 */}
+                  <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(152, 195, 121, 0.15)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Sparkles className="w-4 h-4" style={{ color: '#98c379' }} />
+                      <h5 className="font-medium" style={{ color: '#98c379' }}>Gancho Publicitario</h5>
+                    </div>
+                    <p className="text-sm font-medium" style={{ color: '#98c379' }}>"{result['Gancho (Hook)'] || 'Sin datos'}"</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {result.estado_aprobacion !== 'aprobado' && (
+                      <button onClick={() => handleApprove(result.id || index, result)} disabled={loading} className="btn-primary flex-1 sm:flex-none">
+                        <CheckCircle className="w-4 h-4" /> Aprobar
+                      </button>
+                    )}
+                    
+                    {result.estado_aprobacion !== 'rechazado' && (
+                      <button onClick={() => onReject(result.id || index)} disabled={loading} className="btn-danger flex-1 sm:flex-none">
+                        <XCircle className="w-4 h-4" /> Rechazar
+                      </button>
+                    )}
+
+                    {result.estado_aprobacion === 'aprobado' && result.publicado !== 'si' && (
+                      <button onClick={() => setDropiModal({ open: true, product: result })} disabled={loading} className="btn-accent flex-1 sm:flex-none">
+                        <Store className="w-4 h-4" /> Buscar en Dropi
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {expandedId === index && (
-              <div className="px-4 pb-4 space-y-4 animate-fade-in">
-                <hr />
-                
-                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target className="w-4 h-4 text-red-600" />
-                    <h5 className="font-medium text-red-700 dark:text-red-300">Puntos de Dolor</h5>
-                  </div>
-                  <p className="text-sm text-red-600">{result['Puntos de Dolor'] || 'Sin datos'}</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-4 h-4 text-blue-600" />
-                    <h5 className="font-medium text-blue-700 dark:text-blue-300">Insights</h5>
-                  </div>
-                  <p className="text-sm text-blue-600">{result['Insights'] || 'Sin datos'}</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-accent-50 dark:bg-accent-900/20">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-4 h-4 text-accent-600" />
-                    <h5 className="font-medium text-accent-700 dark:text-accent-300">Gancho Publicitario</h5>
-                  </div>
-                  <p className="text-sm text-accent-600 font-medium">"{result['Gancho (Hook)'] || 'Sin datos'}"</p>
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {result.estado_aprobacion !== 'aprobado' && (
-                    <button onClick={() => onApprove(result.id || index)} disabled={loading} className="btn-primary flex-1 sm:flex-none">
-                      <CheckCircle className="w-4 h-4" /> Aprobar
-                    </button>
-                  )}
-                  
-                  {result.estado_aprobacion !== 'rechazado' && (
-                    <button onClick={() => onReject(result.id || index)} disabled={loading} className="btn-danger flex-1 sm:flex-none">
-                      <XCircle className="w-4 h-4" /> Rechazar
-                    </button>
-                  )}
-
-                  {result.estado_aprobacion === 'aprobado' && result.publicado !== 'si' && (
-                    <button onClick={() => onPublish(result.id || index)} disabled={loading} className="btn-accent flex-1 sm:flex-none">
-                      <Upload className="w-4 h-4" /> Publicar en WooCommerce
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1218,9 +1441,7 @@ function MarketingResults({ results, onApprove, onReject, onPublish, loading }) 
 // MAIN APP CONTENT
 // ============================================
 function AppContent() {
-  const [darkMode, setDarkMode] = useState(() => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
+  const [darkMode, setDarkMode] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const [activeTab, setActiveTab] = useState('products')
   const [products, setProducts] = useState([])
   const [marketingResults, setMarketingResults] = useState([])
@@ -1258,10 +1479,7 @@ function AppContent() {
 
   const handleAddProduct = async (urls) => {
     try {
-      await api.request('/products/add', {
-        method: 'POST',
-        body: JSON.stringify({ urls }),
-      })
+      await api.request('/products/add', { method: 'POST', body: JSON.stringify({ urls }) })
       addNotification({ type: 'success', message: `${urls.length} producto(s) agregado(s)` })
       loadProducts()
     } catch (err) {
@@ -1283,14 +1501,36 @@ function AppContent() {
     try {
       setScrapingStatus('processing')
       await api.request('/scraping/start', { method: 'POST' })
-      addNotification({ type: 'info', message: 'Análisis iniciado' })
+      addNotification({ type: 'info', message: 'Análisis iniciado - Esto puede tomar varios minutos' })
       
+      // Polling para verificar estado
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await api.request('/scraping/status')
+          if (status.status === 'completed' || status.status === 'error') {
+            clearInterval(pollInterval)
+            setScrapingStatus(status.status)
+            if (status.status === 'completed') {
+              addNotification({ type: 'success', message: '¡Análisis completado!' })
+              loadMarketingResults()
+            } else {
+              addNotification({ type: 'error', message: 'Error en el análisis' })
+            }
+          }
+        } catch (e) {
+          console.error('Polling error:', e)
+        }
+      }, 5000)
+
+      // Timeout de seguridad (10 minutos)
       setTimeout(() => {
-        setScrapingStatus('completed')
-        addNotification({ type: 'success', message: 'Análisis completado' })
-        loadMarketingResults()
-        setActiveTab('results')
-      }, 10000)
+        clearInterval(pollInterval)
+        if (scrapingStatus === 'processing') {
+          setScrapingStatus('completed')
+          addNotification({ type: 'success', message: 'Análisis completado' })
+          loadMarketingResults()
+        }
+      }, 600000)
     } catch (err) {
       addNotification({ type: 'error', message: 'Error al iniciar análisis' })
       setScrapingStatus('error')
@@ -1338,12 +1578,7 @@ function AppContent() {
     <div className="min-h-screen">
       <Notifications notifications={notifications} />
       
-      <Header 
-        darkMode={darkMode} 
-        setDarkMode={setDarkMode}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
+      <Header darkMode={darkMode} setDarkMode={setDarkMode} activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'products' && (
@@ -1384,7 +1619,7 @@ function AppContent() {
 
       <footer className="border-t py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-surface-500">
-          DropShip Manager v1.1 • Con autenticación
+          DropShip Manager v1.2 • Con integración Dropi
         </div>
       </footer>
     </div>

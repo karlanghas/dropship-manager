@@ -1164,8 +1164,9 @@ function ProductForm({ onAddProduct, loading }) {
 // ============================================
 // PRODUCT LIST WITH TIMER
 // ============================================
-function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, loading, onScrapingComplete }) {
+function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus, setScrapingStatus, loading, addNotification }) {
   const timer = useTimer()
+  const api = useApi()
 
   useEffect(() => {
     if (scrapingStatus === 'processing' && !timer.isRunning) {
@@ -1178,6 +1179,17 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
   const handleRunScraping = () => {
     timer.reset()
     onRunScraping()
+  }
+
+  const handleMarkComplete = async () => {
+    try {
+      await api.request('/scraping/mark-complete', { method: 'POST' })
+      setScrapingStatus('completed')
+      timer.stop()
+      addNotification({ type: 'success', message: '¡Marcado como completado!' })
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Error al marcar como completado' })
+    }
   }
 
   if (products.length === 0) {
@@ -1212,7 +1224,7 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
 
       {scrapingStatus === 'processing' && (
         <div className="p-6 bg-gradient-to-r from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20 border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-4 border-accent-200 dark:border-accent-800"></div>
@@ -1230,6 +1242,20 @@ function ProductList({ products, onRunScraping, onRemoveProduct, scrapingStatus,
               <p className="text-3xl font-mono font-bold text-accent-700 dark:text-accent-300">{timer.formatTime()}</p>
               <p className="text-sm text-accent-600 dark:text-accent-400">Tiempo transcurrido</p>
             </div>
+          </div>
+          
+          {/* Botón para marcar como completado manualmente */}
+          <div className="flex items-center justify-between pt-4 border-t border-accent-200 dark:border-accent-800">
+            <p className="text-sm text-accent-600 dark:text-accent-400">
+              ¿El flujo n8n ya terminó?
+            </p>
+            <button 
+              onClick={handleMarkComplete}
+              className="px-4 py-2 rounded-lg bg-white dark:bg-surface-800 text-accent-700 dark:text-accent-300 font-medium text-sm hover:bg-accent-100 dark:hover:bg-accent-900/30 transition-colors flex items-center gap-2"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Marcar como completado
+            </button>
           </div>
         </div>
       )}
@@ -1503,34 +1529,36 @@ function AppContent() {
       await api.request('/scraping/start', { method: 'POST' })
       addNotification({ type: 'info', message: 'Análisis iniciado - Esto puede tomar varios minutos' })
       
-      // Polling para verificar estado
+      // Polling para verificar estado (cada 5 segundos)
       const pollInterval = setInterval(async () => {
         try {
           const status = await api.request('/scraping/status')
-          if (status.status === 'completed' || status.status === 'error') {
+          console.log('Polling status:', status)
+          
+          if (status.status === 'completed') {
             clearInterval(pollInterval)
-            setScrapingStatus(status.status)
-            if (status.status === 'completed') {
-              addNotification({ type: 'success', message: '¡Análisis completado!' })
-              loadMarketingResults()
-            } else {
-              addNotification({ type: 'error', message: 'Error en el análisis' })
-            }
+            setScrapingStatus('completed')
+            addNotification({ type: 'success', message: `¡Análisis completado!${status.newResults ? ` (${status.newResults} nuevos resultados)` : ''}` })
+            loadMarketingResults()
+          } else if (status.status === 'error') {
+            clearInterval(pollInterval)
+            setScrapingStatus('error')
+            addNotification({ type: 'error', message: 'Error en el análisis' })
           }
         } catch (e) {
           console.error('Polling error:', e)
         }
       }, 5000)
 
-      // Timeout de seguridad (10 minutos)
+      // Guardar referencia para poder cancelar
+      window.scrapingPollInterval = pollInterval
+
+      // Timeout de seguridad (15 minutos)
       setTimeout(() => {
-        clearInterval(pollInterval)
-        if (scrapingStatus === 'processing') {
-          setScrapingStatus('completed')
-          addNotification({ type: 'success', message: 'Análisis completado' })
-          loadMarketingResults()
+        if (window.scrapingPollInterval) {
+          clearInterval(window.scrapingPollInterval)
         }
-      }, 600000)
+      }, 900000)
     } catch (err) {
       addNotification({ type: 'error', message: 'Error al iniciar análisis' })
       setScrapingStatus('error')
@@ -1589,7 +1617,9 @@ function AppContent() {
               onRunScraping={handleRunScraping}
               onRemoveProduct={handleRemoveProduct}
               scrapingStatus={scrapingStatus}
+              setScrapingStatus={setScrapingStatus}
               loading={api.loading}
+              addNotification={addNotification}
             />
           </div>
         )}

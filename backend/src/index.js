@@ -299,6 +299,17 @@ app.get('/api/health', (req, res) => {
   })
 })
 
+// Callback de n8n cuando termina el scraping (público - llamado por n8n)
+app.post('/api/scraping/complete', (req, res) => {
+  console.log('=== SCRAPING COMPLETE CALLBACK ===')
+  console.log('Body:', req.body)
+  
+  store.scrapingStatus = 'completed'
+  store.scrapingEndTime = Date.now()
+  
+  res.json({ success: true, message: 'Status updated to completed' })
+})
+
 // ============================================
 // AUTH ROUTES
 // ============================================
@@ -632,10 +643,27 @@ app.post('/api/products/:id/publish', async (req, res) => {
 app.post('/api/scraping/start', async (req, res) => {
   try {
     store.scrapingStatus = 'processing'
+    store.scrapingStartTime = Date.now()
+    store.lastResultCount = 0
+    
+    // Guardar conteo actual de resultados para detectar nuevos
+    if (sheetsClient) {
+      try {
+        const response = await sheetsClient.spreadsheets.values.get({
+          spreadsheetId: config.sheets.id,
+          range: 'Marketing_Analisis!A:A'
+        })
+        store.lastResultCount = (response.data.values?.length || 1) - 1 // -1 por header
+        console.log('Initial result count:', store.lastResultCount)
+      } catch (e) {
+        console.log('Could not get initial count:', e.message)
+      }
+    }
     
     const result = await callN8nWebhook(config.n8n.webhooks.scraping, {
       spreadsheet_name: 'Planilla_Resenas',
-      sheet_name: 'Raw_Resenas'
+      sheet_name: 'Raw_Resenas',
+      callback_url: `${process.env.APP_URL || 'http://localhost:3201'}/api/scraping/complete`
     })
     
     store.taskId = result.task_id || result.taskId || null
@@ -648,36 +676,91 @@ app.post('/api/scraping/start', async (req, res) => {
   } catch (error) {
     console.error('Error starting scraping:', error)
     
+    // Aún así marcamos como processing para el polling
     store.scrapingStatus = 'processing'
-    setTimeout(() => {
-      store.scrapingStatus = 'completed'
-    }, 8000)
     
     res.json({ 
       success: true, 
       status: 'processing',
-      message: 'Demo mode: Scraping simulation started'
+      message: 'Scraping iniciado (sin confirmación de n8n)'
     })
   }
 })
 
+// Endpoint para marcar manualmente como completado
+app.post('/api/scraping/mark-complete', authMiddleware, (req, res) => {
+  console.log('=== MANUAL MARK COMPLETE ===')
+  
+  store.scrapingStatus = 'completed'
+  store.scrapingEndTime = Date.now()
+  
+  res.json({ success: true, message: 'Marked as completed' })
+})
+
 app.get('/api/scraping/status', async (req, res) => {
   try {
-    if (store.taskId) {
-      const response = await fetch(`${config.scraper.url}/task/${store.taskId}`)
-      const data = await response.json()
-      
-      store.scrapingStatus = data.status
-      
+    // Si ya está completado, devolver completado
+    if (store.scrapingStatus === 'completed') {
       return res.json({ 
-        status: data.status,
-        progress: data.progress || null,
-        results: data.results || null
+        status: 'completed',
+        duration: store.scrapingEndTime ? store.scrapingEndTime - store.scrapingStartTime : null
       })
     }
     
-    res.json({ status: store.scrapingStatus || 'idle' })
+    // Verificar si hay nuevos resultados en Google Sheets
+    if (store.scrapingStatus === 'processing' && sheetsClient) {
+      try {
+        const response = await sheetsClient.spreadsheets.values.get({
+          spreadsheetId: config.sheets.id,
+          range: 'Marketing_Analisis!A:A'
+        })
+        const currentCount = (response.data.values?.length || 1) - 1
+        
+        console.log(`Checking results: initial=${store.lastResultCount}, current=${currentCount}`)
+        
+        // Si hay más resultados que antes, el proceso terminó
+        if (currentCount > store.lastResultCount) {
+          console.log('New results detected! Marking as completed.')
+          store.scrapingStatus = 'completed'
+          store.scrapingEndTime = Date.now()
+          return res.json({ 
+            status: 'completed',
+            newResults: currentCount - store.lastResultCount
+          })
+        }
+      } catch (e) {
+        console.log('Could not check results:', e.message)
+      }
+    }
+    
+    // Intentar obtener estado del scraper si hay taskId
+    if (store.taskId) {
+      try {
+        const response = await fetch(`${config.scraper.url}/task/${store.taskId}`)
+        const data = await response.json()
+        
+        if (data.status === 'completed' || data.status === 'done') {
+          store.scrapingStatus = 'completed'
+          store.scrapingEndTime = Date.now()
+        }
+        
+        return res.json({ 
+          status: store.scrapingStatus,
+          progress: data.progress || null,
+          taskStatus: data.status
+        })
+      } catch (e) {
+        // Scraper no disponible, continuar con status actual
+      }
+    }
+    
+    // Devolver estado actual
+    res.json({ 
+      status: store.scrapingStatus || 'idle',
+      elapsed: store.scrapingStartTime ? Date.now() - store.scrapingStartTime : 0
+    })
   } catch (error) {
+    console.error('Status check error:', error)
     res.json({ status: store.scrapingStatus || 'idle' })
   }
 })

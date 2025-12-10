@@ -373,7 +373,7 @@ export function validateToken(token) {
 // ============================================
 export function authMiddleware(req, res, next) {
   // Rutas públicas que no requieren autenticación
-  const publicPaths = ['/api/auth/login', '/api/health']
+  const publicPaths = ['/api/auth/login', '/api/health', '/api/scraping/complete']
   
   if (publicPaths.includes(req.path)) {
     return next()
